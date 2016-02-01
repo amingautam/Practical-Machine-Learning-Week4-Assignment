@@ -12,37 +12,54 @@ In this project, our goal will be to use data from accelerometers on the belt, f
 
 ## Loading Libraries
 ```{r cache = FALSE, echo = FALSE, message = FALSE, warning = FALSE, tidy = FALSE}
-library(caret)
-library(ggplot2)
-library(dplyr)
-library(randomForest)
+library(knitr,quietly = TRUE)
+library(caret,quietly = TRUE, warn.conflicts = FALSE)
+library(ggplot2,quietly = TRUE, warn.conflicts = FALSE)
+library(dplyr,quietly = TRUE, warn.conflicts = FALSE)
+library(randomForest,quietly = TRUE, warn.conflicts = FALSE)
+library(rpart,quietly = TRUE, warn.conflicts = FALSE)
 ```
 
 ## Get Data
 ```{r cache = TRUE}
 fileurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
-download.file(url=fileurl,destfile="pmltraining.csv",method="curl")
+download.file(url=fileurl,destfile="pml-training.csv",method="curl")
 
 fileurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
-download.file(url=fileurl,destfile="pmltesting.csv",method="curl")
+download.file(url=fileurl,destfile="pml-testing.csv",method="curl")
 ```
 
 
 ## Load Data
 ```{r cache = TRUE}
-pmltraining <- read.csv("pmltraining.csv")
-pmltesting <- read.csv("pmltesting.csv")
+pmltraining <- read.csv("pml-training.csv")
+pmltesting <- read.csv("pml-testing.csv")
 ```
 
 
 ## Data Cleanup 
 Since the data has 160 columns and lot of them have NA values for most of the rows, I decided on:
-**Removing Columns which have more than 60% rows which are with NA value.** so that the data is far more reliable.
+
+** - start by using the Identification of near zero variance predictors **
+
+** - Removing Columns which have more than 60% rows which are with NA value. so that the data is far more reliable.**
+
+** - Removing the first few columns like NAME etc which obviously are of no use in the prediction. **
+
 ```{r}
 #setting seed for reproducability
 set.seed(42)
-pmltraining2 <- pmltraining[,colSums(is.na(pmltraining)) <= 0.6*nrow(pmltraining)] 
-#Removing the first few columns which are obviously of no use in this prediction (viz: Name, timestamp etc)
+ 
+nzv <- nearZeroVar(pmltraining)
+pmltraining1 <- pmltraining[, -nzv]
+dim(pmltraining1)
+pmltraining2_new <- pmltraining1
+dim(pmltraining2_new)
+
+pmltraining2 <- pmltraining2_new[,colSums(is.na(pmltraining2_new)) <= 0.6*nrow(pmltraining2_new)] 
+dim(pmltraining2)
+####
+
 names(pmltraining2)
 pmltraining2$X <- NULL
 pmltraining2$user_name <- NULL
@@ -52,31 +69,26 @@ pmltraining2$cvtd_timestamp <- NULL
 pmltraining2$new_window <- NULL
 pmltraining2$num_window <- NULL
 dim(pmltraining2)
+
 ```
 
 ## Bootstrap
 **Creating the TRAINING data by creating a partition with 60% data 
-Creating 2 more partitions from the palance 40% (half each) for TESTING & VALIDATION purpose**
+The balance 40% will be for TESTING purpose**
 ```{r}
 pmltraining3 <- pmltraining2
 intrain <- createDataPartition(y=pmltraining3$classe,p=0.6,list=FALSE)
 pmltraining3_train <- pmltraining3[intrain,]
-pmltraining3_val <- pmltraining3[-intrain,]
-inval <- createDataPartition(y=pmltraining3_val$classe,p=0.5,list=FALSE)
-pmltraining3_test1 <- pmltraining3_val[inval,]
-pmltraining3_val1 <- pmltraining3_val[-inval,]
+pmltraining3_test1 <- pmltraining3[-intrain,]
 ```
 
 
 ## Training the data on various Models to find the best one.
 ```{r cache = TRUE}
-mod1 <- train(classe ~. , data=pmltraining3_train, method="rf", trControl = trainControl(method = "cv", number = 5))
+mod1 <- train(classe ~. , data=pmltraining3_train, method="rf", trControl = trainControl(method = "cv",number = 5))
 mod1
 mod3 <- train(classe ~. , data=pmltraining3_train,method="rpart")
 mod3
-
-plot(mod1)
-plot(mod3)
 ```
 
 
@@ -86,11 +98,9 @@ plot(mod3)
 pred1 <- predict(mod1,pmltraining3_test1)
 pred3 <- predict(mod3,pmltraining3_test1)
 
-#For reconciling purpose
 table(pred1)
 table(pred3)
 table(pmltraining3_test1$classe)
-
 
 confusionMatrix(pred1, pmltraining3_test1$classe)
 confusionMatrix(pred3, pmltraining3_test1$classe)
@@ -107,11 +117,12 @@ pred4
 ```
 
 <i>Note: (ref: http://groupware.les.inf.puc-rio.br/har) 
+
 - Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
 
 - Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.</i>
  
-<span style="color:blue">Based on our prediction here is what we see</span>**
+<span style="color:blue">Based on our prediction here is what we see</span>
 **Out of the 20 samples: 7 were doing the Unilateral Dumbell Bicep Curl exactly according to the Specification , i.e: (Class A). Rest of them performed it with one or the other mistake types, i.e (Class B-E)**
 
 
