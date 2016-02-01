@@ -1,0 +1,117 @@
+---
+title: "Practical Machine Learning - Week4 Assignment"
+author: "Gautam Amin"
+output: html_document
+---
+
+## Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement : a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+** The Final Goal of this project is to predict the manner in which they did the exercise.**
+
+## Loading Libraries
+```{r cache = FALSE, echo = FALSE, message = FALSE, warning = FALSE, tidy = FALSE}
+library(caret)
+library(ggplot2)
+library(dplyr)
+library(randomForest)
+```
+
+## Get Data
+```{r cache = TRUE}
+fileurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(url=fileurl,destfile="pmltraining.csv",method="curl")
+
+fileurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url=fileurl,destfile="pmltesting.csv",method="curl")
+```
+
+
+## Load Data
+```{r cache = TRUE}
+pmltraining <- read.csv("pmltraining.csv")
+pmltesting <- read.csv("pmltesting.csv")
+```
+
+
+## Data Cleanup 
+Since the data has 160 columns and lot of them have NA values for most of the rows, I decided on:
+**Removing Columns which have more than 60% rows which are with NA value.** so that the data is far more reliable.
+```{r}
+#setting seed for reproducability
+set.seed(42)
+pmltraining2 <- pmltraining[,colSums(is.na(pmltraining)) <= 0.6*nrow(pmltraining)] 
+#Removing the first few columns which are obviously of no use in this prediction (viz: Name, timestamp etc)
+names(pmltraining2)
+pmltraining2$X <- NULL
+pmltraining2$user_name <- NULL
+pmltraining2$raw_timestamp_part_1 <- NULL
+pmltraining2$raw_timestamp_part_2 <- NULL
+pmltraining2$cvtd_timestamp <- NULL
+pmltraining2$new_window <- NULL
+pmltraining2$num_window <- NULL
+dim(pmltraining2)
+```
+
+## Bootstrap
+**Creating the TRAINING data by creating a partition with 60% data 
+Creating 2 more partitions from the palance 40% (half each) for TESTING & VALIDATION purpose**
+```{r}
+pmltraining3 <- pmltraining2
+intrain <- createDataPartition(y=pmltraining3$classe,p=0.6,list=FALSE)
+pmltraining3_train <- pmltraining3[intrain,]
+pmltraining3_val <- pmltraining3[-intrain,]
+inval <- createDataPartition(y=pmltraining3_val$classe,p=0.5,list=FALSE)
+pmltraining3_test1 <- pmltraining3_val[inval,]
+pmltraining3_val1 <- pmltraining3_val[-inval,]
+```
+
+
+## Training the data on various Models to find the best one.
+```{r cache = TRUE}
+mod1 <- train(classe ~. , data=pmltraining3_train, method="rf", trControl = trainControl(method = "cv", number = 5))
+mod1
+mod3 <- train(classe ~. , data=pmltraining3_train,method="rpart")
+mod3
+
+plot(mod1)
+plot(mod3)
+```
+
+
+## Testing for Out-of-Sample error
+**Now testing with the TESTING set which was created from the 40% balance from TRAINING Data.**
+```{r}
+pred1 <- predict(mod1,pmltraining3_test1)
+pred3 <- predict(mod3,pmltraining3_test1)
+
+#For reconciling purpose
+table(pred1)
+table(pred3)
+table(pmltraining3_test1$classe)
+
+
+confusionMatrix(pred1, pmltraining3_test1$classe)
+confusionMatrix(pred3, pmltraining3_test1$classe)
+```
+
+<span style="color:blue">Conclusion: </span>**The Random Forest is clearly more accurate than the 'rpart' method with 99% accuracy.**
+
+##Final test on the REAL TEST data (viz: the 20 cases)
+Based on the inference made avove we will use the Random forest model to predict:
+```{r}
+pred4 <- predict(mod1,pmltesting)
+table(pred4)
+pred4
+```
+
+<i>Note: (ref: http://groupware.les.inf.puc-rio.br/har) 
+- Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+- Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.</i>
+ 
+<span style="color:blue">Based on our prediction here is what we see</span>**
+**Out of the 20 samples: 7 were doing the Unilateral Dumbell Bicep Curl exactly according to the Specification , i.e: (Class A). Rest of them performed it with one or the other mistake types, i.e (Class B-E)**
+
+
